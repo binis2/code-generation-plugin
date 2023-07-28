@@ -1,5 +1,6 @@
 package net.binis.codegen.compiler.plugin.parser;
 
+import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.code.Symtab;
 import com.sun.tools.javac.code.Type;
 import com.sun.tools.javac.comp.*;
@@ -11,17 +12,24 @@ import com.sun.tools.javac.util.List;
 import com.sun.tools.javac.util.*;
 import net.binis.codegen.tools.Reflection;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.*;
 import java.util.function.Predicate;
 
 import static java.util.Objects.nonNull;
-import static net.binis.codegen.tools.Reflection.setFieldValue;
+import static net.binis.codegen.tools.Reflection.*;
 import static net.binis.codegen.tools.Tools.in;
 
 public class CodeGenAttr extends Attr {
-    private final Stack<JCTree.JCFieldAccess> _selects;
-    private final Stack<JCTree> _stack = new Stack<>();
-    private final Map<JCTree, JCTree.JCMethodInvocation> _rewritten = new HashMap<>();
+    protected final Stack<JCTree.JCFieldAccess> _selects;
+    protected final Stack<JCTree> _stack = new Stack<>();
+    protected final Map<JCTree, JCTree.JCMethodInvocation> _rewritten = new HashMap<>();
+
+    protected static final Method TYPE_ENVS_GET = findMethod("get", loadClass("com.sun.tools.javac.comp.TypeEnvs"), Symbol.TypeSymbol.class);
+    protected static final Field TYPE_ENVS_FIELD = findField(Attr.class, "typeEnvs");
+    protected static final Field MAKER_FIELD = findField(Attr.class, "make");
+    protected static final Field ENV_FIELD = findField(Attr.class, "env");
 
     public static CodeGenAttr instance(Context ctx) {
         Attr attr = ctx.get(attrKey);
@@ -33,13 +41,13 @@ public class CodeGenAttr extends Attr {
         return (CodeGenAttr) attr;
     }
 
-    private CodeGenAttr(Context context) {
+    protected CodeGenAttr(Context context) {
         super(context);
         _selects = new Stack<>();
         patchCompilerClasses(context);
     }
 
-    private void patchCompilerClasses(Context context) {
+    protected void patchCompilerClasses(Context context) {
         setFieldValue(Resolve.instance(context), "attr", this);
         setFieldValue(ArgumentAttr.instance(context), "attr", this);
         setFieldValue(DeferredAttr.instance(context), "attr", this);
@@ -77,8 +85,7 @@ public class CodeGenAttr extends Attr {
                             if (tryRewritePackage(tree)) {
                                 fixDiag(diag, err);
                             }
-                        } else
-                        if (tree.selected instanceof JCTree.JCIdent ident && tryToRewriteIdent(ident) && tryToRewriteFieldAccess(tree, diag)) {
+                        } else if (tree.selected instanceof JCTree.JCIdent ident && tryToRewriteIdent(ident) && tryToRewriteFieldAccess(tree, diag)) {
                             fixDiag(diag, err);
                         }
                     }
@@ -95,7 +102,7 @@ public class CodeGenAttr extends Attr {
         }
     }
 
-    private void fixDiag(Queue<JCDiagnostic> diag, int err) {
+    protected void fixDiag(Queue<JCDiagnostic> diag, int err) {
         for (var i = 0; i < err; i++) {
             diag.poll();
         }
@@ -117,24 +124,24 @@ public class CodeGenAttr extends Attr {
         }
     }
 
-    private JCTree.JCMethodInvocation buildMethod(JCTree.JCExpression tree, Env env) {
+    protected JCTree.JCMethodInvocation buildMethod(JCTree.JCExpression tree, Env env) {
         var mt = new Type.MethodType(List.nil(), Type.noType, List.nil(), ((Symtab) Reflection.getFieldValue(this, "syms")).methodClass);
 
         var ri = Reflection.getFieldValue(this, "resultInfo");
 
         setFieldValue(ri, "pt", mt);
-        var exp = ((TreeMaker) Reflection.getFieldValue(this, "make")).Apply(List.nil(), tree, List.nil());
+        var exp = getMaker().Apply(List.nil(), tree, List.nil());
         env.tree = exp;
         return exp;
     }
 
     @SuppressWarnings("unchecked")
-    private boolean tryRewritePackage(JCTree.JCFieldAccess tree) {
+    protected boolean tryRewritePackage(JCTree.JCFieldAccess tree) {
         try {
-            var maker = ((TreeMaker) Reflection.getFieldValue(this, "make"));
+            var maker = getMaker();
             var chain = tryRewritePackage(tree, null);
             chain = maker.Apply(List.nil(), maker.Select(chain, tree.name), List.nil());
-            var env = (Env) Reflection.getFieldValue(this, "env");
+            var env = getEnv();
             var type = attribExpr(chain, env);
             if (!type.isErroneous()) {
                 env.tree = chain;
@@ -147,14 +154,14 @@ public class CodeGenAttr extends Attr {
         return false;
     }
 
-    private JCTree.JCExpression tryRewritePackage(JCTree.JCFieldAccess tree, JCTree.JCExpression chain) {
+    protected JCTree.JCExpression tryRewritePackage(JCTree.JCFieldAccess tree, JCTree.JCExpression chain) {
         try {
             if (tree.selected instanceof JCTree.JCFieldAccess access) {
-                var maker = ((TreeMaker) Reflection.getFieldValue(this, "make"));
+                var maker = getMaker();
                 chain = tryRewritePackage(access, chain);
                 return maker.Apply(List.nil(), maker.Select(chain, access.name), List.nil());
             } else {
-                var env = (Env) Reflection.getFieldValue(this, "env");
+                var env = getEnv();
                 return buildMethod(tree.selected, env);
             }
         } catch (Exception e) {
@@ -162,10 +169,9 @@ public class CodeGenAttr extends Attr {
         return null;
     }
 
-    @SuppressWarnings("unchecked")
-    private boolean tryToRewriteFieldAccess(JCTree.JCFieldAccess tree, Queue<JCDiagnostic> diag) {
+    protected boolean tryToRewriteFieldAccess(JCTree.JCFieldAccess tree, Queue<JCDiagnostic> diag) {
         try {
-            var env = (Env) Reflection.getFieldValue(this, "env");
+            var env = getEnv();
             var exp = buildMethod(tree, env);
             tree.sym = null;
             var prv = diag.size();
@@ -182,9 +188,9 @@ public class CodeGenAttr extends Attr {
         return false;
     }
 
-    private boolean tryToRewriteIdent(JCTree.JCIdent tree) {
+    protected boolean tryToRewriteIdent(JCTree.JCIdent tree) {
         try {
-            var env = (Env) Reflection.getFieldValue(this, "env");
+            var env = getEnv();
             var exp = buildMethod(tree, env);
             tree.sym = null;
             var type = attribExpr(exp, env);
@@ -198,7 +204,7 @@ public class CodeGenAttr extends Attr {
     }
 
 
-    private boolean replaceTree(JCTree old, JCTree tree, JCTree.JCMethodInvocation exp) {
+    protected boolean replaceTree(JCTree old, JCTree tree, JCTree.JCMethodInvocation exp) {
         //if type discovery is needed use attribExpr(exp, env)
         _stack.push(old);
         try {
@@ -436,10 +442,62 @@ public class CodeGenAttr extends Attr {
         getLogger().popDiagnosticHandler(deferredAttrDiagHandler);
     }
 
+    @Override
+    public void attribClass(JCDiagnostic.DiagnosticPosition pos, Symbol.ClassSymbol c) {
+        var env = (Env) invoke(TYPE_ENVS_GET, getFieldValue(TYPE_ENVS_FIELD, this), c);
+        var deferredAttrDiagHandler = suppressDiagnostics(env.tree);
+        try {
+            super.attribClass(pos, c);
+            var diag = deferredAttrDiagHandler.getDiagnostics();
+            if (!diag.isEmpty()) {
+                if ("compiler.err.cant.extend.intf.annotation".equals(diag.peek().getCode()) &&
+                        handleInheritedAnnotations((JCTree.JCClassDecl) env.tree)) {
+                    diag.poll();
+                }
+            }
+        } finally {
+            restoreDiagnostics(env.tree, deferredAttrDiagHandler);
+        }
+    }
+
+    protected boolean handleInheritedAnnotations(JCTree.JCClassDecl tree) {
+        var result = false;
+        for (var inh : tree.implementing) {
+            result |= inheritAnnotation(tree, inh);
+        }
+        return result;
+    }
+
+    protected boolean inheritAnnotation(JCTree.JCClassDecl tree, JCTree.JCExpression inh) {
+        var obj = getFieldValue(inh, "sym");
+        var members = tree.getMembers().stream().filter(JCTree.JCMethodDecl.class::isInstance).map(JCTree.JCMethodDecl.class::cast).map(JCTree.JCMethodDecl::getName).map(Name::toString).toList();
+        if (obj instanceof Symbol.ClassSymbol sym) {
+            for (var member : sym.members().getSymbols()) {
+                if (member instanceof Symbol.MethodSymbol method) {
+                    var name = method.getSimpleName().toString();
+                    if (members.stream().noneMatch(name::equals)) {
+                        var mtd = getMaker().MethodDef(method, null);
+                        tree.sym.members().enter(method);
+                        tree.defs.append(mtd);
+                    }
+                }
+            }
+            return true;
+        }
+        return false;
+    }
+
+    protected Env getEnv() {
+        return getFieldValue(ENV_FIELD, this);
+    }
+
+    protected TreeMaker getMaker() {
+        return getFieldValue(MAKER_FIELD, this);
+    }
 
     class DeferredDiagnosticHandler extends Log.DiagnosticHandler {
-        private Queue<JCDiagnostic> deferred = new ListBuffer<>();
-        private final Predicate<JCDiagnostic> filter;
+        protected Queue<JCDiagnostic> deferred = new ListBuffer<>();
+        protected final Predicate<JCDiagnostic> filter;
 
         public DeferredDiagnosticHandler(Log log) {
             this(log, null);

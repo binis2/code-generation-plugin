@@ -1,15 +1,10 @@
 package net.binis.codegen.compiler.plugin.parser;
 
 import com.sun.tools.javac.api.JavacTrees;
-import com.sun.tools.javac.code.Kinds;
-import com.sun.tools.javac.code.Symbol;
-import com.sun.tools.javac.code.Type;
 import com.sun.tools.javac.comp.*;
-import com.sun.tools.javac.util.Context;
-import com.sun.tools.javac.util.JCDiagnostic;
-import com.sun.tools.javac.util.Name;
-import net.binis.codegen.tools.Reflection;
 import com.sun.tools.javac.model.JavacElements;
+import com.sun.tools.javac.util.Context;
+import net.binis.codegen.tools.Reflection;
 
 public class CodeGenResolve extends Resolve {
 
