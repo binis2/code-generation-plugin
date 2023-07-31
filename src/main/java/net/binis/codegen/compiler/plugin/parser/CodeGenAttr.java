@@ -1,5 +1,25 @@
 package net.binis.codegen.compiler.plugin.parser;
 
+/*-
+ * #%L
+ * code-generator-plugin
+ * %%
+ * Copyright (C) 2021 - 2023 Binis Belev
+ * %%
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * 
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * #L%
+ */
+
 import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.code.Symtab;
 import com.sun.tools.javac.code.Type;
@@ -188,6 +208,7 @@ public class CodeGenAttr extends Attr {
         return false;
     }
 
+    @SuppressWarnings("unchecked")
     protected boolean tryToRewriteIdent(JCTree.JCIdent tree) {
         try {
             var env = getEnv();
@@ -415,28 +436,6 @@ public class CodeGenAttr extends Attr {
     protected void restoreDiagnostics(JCTree tree, DeferredAttrDiagHandler deferredAttrDiagHandler) {
         Queue<JCDiagnostic> diagnostics = deferredAttrDiagHandler.getDiagnostics();
         if (!diagnostics.isEmpty()) {
-
-//            if( ((tree.selected instanceof JCTree.JCIdent && isType( ((JCTree.JCIdent)tree.selected).sym )) ||
-//                    (tree.selected instanceof JCTree.JCFieldAccess) && isType( ((JCTree.JCFieldAccess)tree.selected).sym )) &&
-//                    tree.sym instanceof Symbol.VarSymbol )
-//            {
-//                getLogger().popDiagnosticHandler( deferredAttrDiagHandler );
-//                tree.sym = null;
-//                if( tree.selected instanceof JCTree.JCIdent )
-//                {
-//                    ((JCTree.JCIdent)tree.selected).sym = null;
-//                }
-//                else
-//                {
-//                    ((JCTree.JCFieldAccess)tree.selected).sym = null;
-//                }
-//                ReflectUtil.field( resultInfo(), "pkind" ).set( KindSelector_TYP );
-//
-//                ReflectUtil.method( this, "visitSelect", JCTree.JCFieldAccess.class ).invokeSuper( tree );
-//
-//                return;
-//            }
-
             deferredAttrDiagHandler.reportDeferredDiagnostics();
         }
         getLogger().popDiagnosticHandler(deferredAttrDiagHandler);
@@ -471,7 +470,7 @@ public class CodeGenAttr extends Attr {
     protected boolean inheritAnnotation(JCTree.JCClassDecl tree, JCTree.JCExpression inh) {
         var obj = getFieldValue(inh, "sym");
         var members = tree.getMembers().stream().filter(JCTree.JCMethodDecl.class::isInstance).map(JCTree.JCMethodDecl.class::cast).map(JCTree.JCMethodDecl::getName).map(Name::toString).toList();
-        if (obj instanceof Symbol.ClassSymbol sym) {
+        if (obj instanceof Symbol.ClassSymbol sym && sym.isAnnotationType()) {
             for (var member : sym.members().getSymbols()) {
                 if (member instanceof Symbol.MethodSymbol method) {
                     var name = method.getSimpleName().toString();
