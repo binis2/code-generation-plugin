@@ -6,4 +6,6 @@ public @interface BaseAnnotation {
 
     int ordinal();
 
+    Class cls() default void.class;
+
 }

@@ -441,51 +441,6 @@ public class CodeGenAttr extends Attr {
         getLogger().popDiagnosticHandler(deferredAttrDiagHandler);
     }
 
-    @Override
-    public void attribClass(JCDiagnostic.DiagnosticPosition pos, Symbol.ClassSymbol c) {
-        var env = (Env) invoke(TYPE_ENVS_GET, getFieldValue(TYPE_ENVS_FIELD, this), c);
-        var deferredAttrDiagHandler = suppressDiagnostics(env.tree);
-        try {
-            super.attribClass(pos, c);
-            var diag = deferredAttrDiagHandler.getDiagnostics();
-            if (!diag.isEmpty()) {
-                if ("compiler.err.cant.extend.intf.annotation".equals(diag.peek().getCode()) &&
-                        handleInheritedAnnotations((JCTree.JCClassDecl) env.tree)) {
-                    diag.poll();
-                }
-            }
-        } finally {
-            restoreDiagnostics(env.tree, deferredAttrDiagHandler);
-        }
-    }
-
-    protected boolean handleInheritedAnnotations(JCTree.JCClassDecl tree) {
-        var result = false;
-        for (var inh : tree.implementing) {
-            result |= inheritAnnotation(tree, inh);
-        }
-        return result;
-    }
-
-    protected boolean inheritAnnotation(JCTree.JCClassDecl tree, JCTree.JCExpression inh) {
-        var obj = getFieldValue(inh, "sym");
-        var members = tree.getMembers().stream().filter(JCTree.JCMethodDecl.class::isInstance).map(JCTree.JCMethodDecl.class::cast).map(JCTree.JCMethodDecl::getName).map(Name::toString).toList();
-        if (obj instanceof Symbol.ClassSymbol sym && sym.isAnnotationType()) {
-            for (var member : sym.members().getSymbols()) {
-                if (member instanceof Symbol.MethodSymbol method) {
-                    var name = method.getSimpleName().toString();
-                    if (members.stream().noneMatch(name::equals)) {
-                        var mtd = getMaker().MethodDef(method, null);
-                        tree.sym.members().enter(method);
-                        tree.defs.append(mtd);
-                    }
-                }
-            }
-            return true;
-        }
-        return false;
-    }
-
     protected Env getEnv() {
         return getFieldValue(ENV_FIELD, this);
     }
