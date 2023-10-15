@@ -25,6 +25,7 @@ import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.util.Context;
 import com.sun.tools.javac.util.List;
 import com.sun.tools.javac.util.Names;
+import com.sun.tools.javac.code.Flags;
 import net.binis.codegen.compiler.TreeMaker;
 import net.binis.codegen.compiler.utils.ElementUtils;
 
@@ -50,6 +51,7 @@ public class Lookup {
             unit.getTypeDecls().stream()
                     .filter(JCTree.JCClassDecl.class::isInstance)
                     .map(JCTree.JCClassDecl.class::cast)
+                    .filter(tree -> (tree.mods.flags & Flags.ANNOTATION) == Flags.ANNOTATION)
                     .filter(tree -> nonNull(tree.implementing))
                     .filter(tree -> tree.implementing.nonEmpty())
                     .forEach(tree -> inherited.put(name, tree)));
