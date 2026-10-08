@@ -458,8 +458,8 @@ public class CodeGenAttr extends Attr {
         }
 
         public DeferredDiagnosticHandler(Log log, Predicate<JCDiagnostic> filter) {
+            log.super();
             this.filter = filter;
-            install(log);
         }
 
         @Override
